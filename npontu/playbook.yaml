@@ -1,0 +1,127 @@
+---
+- hosts: web
+  become: true
+  user: vagrant
+  become_method: sudo
+  become_user: vagrant
+  gather_facts: false
+
+  vars:
+    - ansible_python_interpreter: /usr/bin/python3
+    - ansible_host_key_checking: false
+
+  pre_tasks:
+     - name: wait 300 seconds for connection to be reachable
+       wait_for_connection:
+         timeout: 300
+         delay: 1
+  tasks:
+   # PHP
+    - name: Add the ondrej PHP PPA
+      apt_repository: repo='ppa:ondrej/php'
+
+    - name: Update the apt cache
+      apt: 
+        update_cache=yes 
+        cache_valid_time=3600
+
+    - name: Install PHP
+      apt: name=php state=installed
+
+    - name: install other php dependencies
+      ansible.builtin.apt:
+        name: "{{ item }}"
+        state: installed
+      loop:
+        - php
+        - php-fpm
+        - php-mysql
+        - php-xml
+
+    - name: Remove apache2
+      ansible.builtin.apt: 
+        name: apache2 
+        state: removed
+
+    - name: Install MySQL
+      ansible.builtin.apt:
+        name: "{{ item }}" 
+        state: installed
+      loop:
+        - mysql-server-5.6
+        - python-mysqldb
+
+
+    # I'm setting a condition for the password to only create when absent
+    - name: Generate new root password
+      command: openssl rand -hex 7
+      creates: /root/.my.cnf
+      register: mysql_new_root_pass
+
+    # removing the anonymous user because it leaves the system vulnerable
+    - name: Remove anonymous users
+      mysql_user: 
+        name: "" 
+        state: absent
+      when: mysql_new_root_pass.changed
+
+    - name: Remove test database
+      mysql_db: 
+        name: test 
+        state: absent
+      when: mysql_new_root_pass.changed
+
+    - name: update root user password
+      community.mysql.mysql_user:
+        name: root
+        host: {{ item }}
+        password: {{ mysql_new_root_pass.stdout }}
+      loop:
+        - "{{ ansible_hostname }}"
+        - 127.0.0.1
+        - ::1
+        - localhost
+      when: mysql_new_root_pass.changed
+    
+    - name: Output new mysql password
+      ansible.builtin.debug:
+        msg: "MySQL new password is: {{ mysql_new_root_pass.stdout }}"
+      when: mysql_new_root_pass.changed
+
+    - name: create my.cnf
+      ansible.builtin.template:
+        src: templates/mysql/my.cnf
+        dest: /root/.my.cnf
+      when: mysql_new_root_pass.changed
+
+    # installing and configuring nginx to serve as the web server
+    - name: Install nginx
+      ansible.builtin.package:
+        name: nginx
+        state: present
+
+    - name: start nginx
+      ansible.builtin.service:
+        name: nginx
+        state: started
+        enabled: true
+
+    - name: Create nginx config
+      ansible.builtin.template: 
+        src: templates/nginx/default 
+        dest: /etc/nginx/sites-available/default
+        notify: restart nginx
+
+    - name: get code from git
+      ansible.builtin.git:
+        repo: 'https://foosball.example.org/path/to/repo.git'
+        dest: ~/myapp/
+
+  handlers:
+    - name: restart nginx
+      service: 
+        name: nginx 
+        state: restarted
+
+    
+
