@@ -1,9 +1,9 @@
----
-- hosts: web
+- name: Playbook for PHP-laraval application
+  hosts: php-server
   become: true
   user: vagrant
   become_method: sudo
-  become_user: vagrant
+  # become_user: vagrant
   gather_facts: false
 
   vars:
@@ -11,27 +11,30 @@
     - ansible_host_key_checking: false
 
   pre_tasks:
-     - name: wait 300 seconds for connection to be reachable
-       wait_for_connection:
-         timeout: 300
-         delay: 1
+    - name: Wait 60 seconds for connection to be reachable
+      ansible.builtin.wait_for_connection:
+        timeout: 10
+        delay: 1
   tasks:
    # PHP
     - name: Add the ondrej PHP PPA
-      apt_repository: repo='ppa:ondrej/php'
+      ansible.builtin.apt_repository:
+        repo: 'ppa:ondrej/php'
 
     - name: Update the apt cache
-      apt: 
-        update_cache=yes 
-        cache_valid_time=3600
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
 
     - name: Install PHP
-      apt: name=php state=installed
+      ansible.builtin.apt:
+        name: php
+        state: present
 
-    - name: install other php dependencies
+    - name: Install other php dependencies
       ansible.builtin.apt:
         name: "{{ item }}"
-        state: installed
+        state: present
       loop:
         - php
         - php-fpm
@@ -39,56 +42,56 @@
         - php-xml
 
     - name: Remove apache2
-      ansible.builtin.apt: 
-        name: apache2 
-        state: removed
+      ansible.builtin.apt:
+        name: apache2
+        state: absent
 
     - name: Install MySQL
       ansible.builtin.apt:
-        name: "{{ item }}" 
-        state: installed
-      loop:
-        - mysql-server-5.6
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - mysql-server
         - python-mysqldb
-
+        - PyMYSQL
 
     # I'm setting a condition for the password to only create when absent
     - name: Generate new root password
-      command: openssl rand -hex 7
-      creates: /root/.my.cnf
+      command: openssl rand -hex 7 creates=/root/.my.cnf
       register: mysql_new_root_pass
 
     # removing the anonymous user because it leaves the system vulnerable
     - name: Remove anonymous users
-      mysql_user: 
-        name: "" 
+      community.mysql.mysql_user:
+        name: ""
         state: absent
       when: mysql_new_root_pass.changed
 
     - name: Remove test database
-      mysql_db: 
-        name: test 
+      mysql_db:
+        name: test
         state: absent
       when: mysql_new_root_pass.changed
 
-    - name: update root user password
+    - name: Update root user password
       community.mysql.mysql_user:
         name: root
-        host: {{ item }}
-        password: {{ mysql_new_root_pass.stdout }}
-      loop:
+        host: "{{ item }}"
+        password: "{{ mysql_new_root_pass.stdout }}"
+      with_items:
         - "{{ ansible_hostname }}"
         - 127.0.0.1
         - ::1
         - localhost
       when: mysql_new_root_pass.changed
-    
+
+
     - name: Output new mysql password
       ansible.builtin.debug:
         msg: "MySQL new password is: {{ mysql_new_root_pass.stdout }}"
       when: mysql_new_root_pass.changed
 
-    - name: create my.cnf
+    - name: Create my.cnf
       ansible.builtin.template:
         src: templates/mysql/my.cnf
         dest: /root/.my.cnf
@@ -100,28 +103,37 @@
         name: nginx
         state: present
 
-    - name: start nginx
+    - name: Start nginx
       ansible.builtin.service:
         name: nginx
         state: started
         enabled: true
 
     - name: Create nginx config
-      ansible.builtin.template: 
-        src: templates/nginx/default 
+      ansible.builtin.template:
+        src: templates/nginx/default
         dest: /etc/nginx/sites-available/default
         notify: restart nginx
 
-    - name: get code from git
+    - name: Create an app directory
+      ansible.builtin.file:
+        path: ~/myapp/
+        state: directory
+        mode: "0752"
+
+    - name: Get code from git
       ansible.builtin.git:
-        repo: 'https://foosball.example.org/path/to/repo.git'
+        repo: 'https://github.com/lowryel/new-vm.git'
         dest: ~/myapp/
+        version: "master"
+
+    - name: Download and installs all libs and dependencies outlined in the /path/to/project/composer.lock
+      community.general.composer:
+        command: install
+        working_dir: ~/myapp/
 
   handlers:
-    - name: restart nginx
-      service: 
-        name: nginx 
+    - name: Restart nginx
+      ansible.builtin.service:
+        name: nginx
         state: restarted
-
-    
-

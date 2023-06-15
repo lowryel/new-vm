@@ -1,0 +1,9 @@
+<network ipv6='yes' trustGuestRxFilters='yes'>
+  <name>external</name>
+  <forward mode='nat' />
+    <interface dev='eth0' />
+  </forward>
+  <bridge name='virbr0' stp='on' delay='0' />
+  <ip address='192.168.56.10' netmask='255.255.255.0' />
+  <dhcp range='192.168.56.8' start='192.168.56.110' />
+</network>
