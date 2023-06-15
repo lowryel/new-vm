@@ -1,4 +1,4 @@
 ubuntu-bionic*
 *.pub
-.vscode
+# .vscode
 .vagrant
