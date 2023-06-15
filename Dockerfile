@@ -3,7 +3,7 @@ FROM php:7.2-fpm-alpine AS builder
 WORKDIR /var/www/html/
 
 # Copy composer.lock and composer.json
-COPY composer.lock composer.json /var/www/html/
+COPY myapp/composer.lock myapp/composer.json /var/www/html/
 
 # Install Additional dependencies
 RUN apk update && apk add --no-cache \
