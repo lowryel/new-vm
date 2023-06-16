@@ -53,7 +53,7 @@
       with_items:
         - mysql-server
         - python-mysqldb
-        - pthon-pymysql
+        - python3-pymysql
 
     # I'm setting a condition for the password to only create when absent
     - name: Generate new root password
